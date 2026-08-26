@@ -111,38 +111,52 @@ def train_val_split(X, y, val_fraction=0.2, random_state=None):
     return X_train, y_train, X_val, y_val
 
 
-def normalise(X, method="none"):
+def normalise(X, method="none", stats=None):
     """
     Normalise a flattened image array.
 
     Args:
         X: array of raw pixel values (0-255), shape (N, D)
         method: one of "none", "minmax", "zscore"
-            "none"    -> return X unchanged (as float, for consistency)
-            "minmax"  -> scale to [0, 1]
-            "zscore"  -> (X - mean) / std
+        stats: previously calculated statistics for z-score
+               normalisation. Should come from X_train.
 
     Returns:
-        normalised array, same shape as X
+        normalised array, stats
     """
+
     X = X.astype(float)
 
     if method == "none":
-        return X
+        return X, None
 
     elif method == "minmax":
-        return X / 255.0
+        return X / 255.0, None
 
     elif method == "zscore":
-        mean = X.mean(axis=0)
-        std = X.std(axis=0)
 
-        std[std == 0] = 1.0
+        if stats is None:
+            mean = X.mean(axis=0)
+            std = X.std(axis=0)
 
-        return (X - mean) / std
+            std[std == 0] = 1.0
+
+            stats = {
+                "mean": mean,
+                "std": std
+            }
+
+        mean = stats["mean"]
+        std = stats["std"]
+
+        X_normalised = (X - mean) / std
+
+        return X_normalised, stats
 
     else:
-        raise ValueError("method must be 'none', 'minmax', or 'zscore'")
+        raise ValueError(
+            "method must be 'none', 'minmax', or 'zscore'"
+        )
 
 
 def augment_brightness(img, low=0.7, high=1.3, rng=None):
