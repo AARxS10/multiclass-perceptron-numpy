@@ -1,0 +1,5 @@
+[33mbcde566[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m Run baseline grid search experiment
+[33m4180e97[m Implement training evaluation and grid search
+[33m1562d2d[m Add multiclass perceptron and real data test
+[33me2336c6[m Implement binary perceptron
+[33ma95facf[m Implement dataset loading and image flattening

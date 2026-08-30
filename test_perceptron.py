@@ -15,7 +15,7 @@ X_small = flatten_images(X[indices])
 y_small = y[indices]
 
 # Min-max normalisation
-X_small = normalise(X_small, method="minmax")
+X_small, _ = normalise(X_small, method="minmax")
 
 
 # Create a fresh model
@@ -25,7 +25,10 @@ model = MultiClassPerceptron(
     learning_rate=1.0
 )
 
-print("Initial weight sum:", np.sum(model.weights))
+print(
+    "Initial weight sum:",
+    sum(np.sum(p.weights) for p in model.perceptrons)
+)
 print("Class distribution:", np.bincount(y_small))
 
 

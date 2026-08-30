@@ -1,79 +1,74 @@
-"""
-train_eval.py
 
-Training loop with configurable stopping criteria, and evaluation
-utilities (metrics + confusion matrix) built on top of sklearn.
-"""
 
 import numpy as np
+
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix
 )
 
 
-def train_model(model, X_train, y_train, X_val, y_val,
-                stopping_criterion="fixed_epochs",
-                max_epochs=50, error_threshold=None, patience=None,
-                random_state=None):
+def train_model(
+    model,
+    X_train,
+    y_train,
+    X_val=None,
+    y_val=None,
+    max_epochs=10,
+    stopping_criterion="fixed",
+    patience=3,
+    random_state=42
+):
     """
-    Train a MultiClassPerceptron using one of several stopping criteria.
-    """
+    Train a multiclass perceptron.
 
-    train_acc_history = []
-    val_acc_history = []
+    stopping_criterion:
+        "fixed"          -> train for max_epochs
+        "early_stopping" -> stop when validation accuracy
+                            stops improving for patience epochs
+    """
 
     rng = np.random.default_rng(random_state)
 
+    train_acc_history = []
+    val_acc_history = []
+    mistakes_history = []
+
     best_val_accuracy = -np.inf
     epochs_without_improvement = 0
-
-    stopped_reason = "max_epochs_reached"
+    stopped_reason = "max_epochs"
 
     for epoch in range(max_epochs):
 
-        # Shuffle training data each epoch
-        indices = rng.permutation(len(X_train))
-        X_shuffled = X_train[indices]
-        y_shuffled = y_train[indices]
+        mistakes = model.train_epoch(
+            X_train,
+            y_train,
+            rng=rng
+        )
 
-        # Train for one epoch
-        mistakes = model.train_epoch(X_shuffled, y_shuffled)
+        train_predictions = model.predict(X_train)
 
-        # Calculate training accuracy
-        train_predictions = model.predict_batch(X_train)
-        train_accuracy = accuracy_score(y_train, train_predictions)
+        train_accuracy = accuracy_score(
+            y_train,
+            train_predictions
+        )
 
-        # Calculate validation accuracy
-        val_predictions = model.predict_batch(X_val)
-        val_accuracy = accuracy_score(y_val, val_predictions)
-
-        # Store history
         train_acc_history.append(train_accuracy)
-        val_acc_history.append(val_accuracy)
+        mistakes_history.append(mistakes)
 
-        # Stopping criterion 1: fixed number of epochs
-        if stopping_criterion == "fixed_epochs":
-            if epoch + 1 == max_epochs:
-                stopped_reason = "max_epochs_reached"
-                break
+        if X_val is not None and y_val is not None:
 
-        # Stopping criterion 2: training error threshold
-        elif stopping_criterion == "error_threshold":
-            if error_threshold is None:
-                raise ValueError(
-                    "error_threshold must be provided for error_threshold stopping."
-                )
+            val_predictions = model.predict(X_val)
 
-            if mistakes <= error_threshold:
-                stopped_reason = "error_threshold_reached"
-                break
+            val_accuracy = accuracy_score(
+                y_val,
+                val_predictions
+            )
 
-        # Stopping criterion 3: early stopping
-        elif stopping_criterion == "early_stopping":
-            if patience is None:
-                raise ValueError(
-                    "patience must be provided for early_stopping."
-                )
+            val_acc_history.append(val_accuracy)
 
             if val_accuracy > best_val_accuracy:
                 best_val_accuracy = val_accuracy
@@ -81,36 +76,47 @@ def train_model(model, X_train, y_train, X_val, y_val,
             else:
                 epochs_without_improvement += 1
 
-            if epochs_without_improvement >= patience:
-                stopped_reason = "early_stopping"
-                break
+        if (
+            stopping_criterion == "early_stopping"
+            and X_val is not None
+            and y_val is not None
+            and epochs_without_improvement >= patience
+        ):
+            stopped_reason = "early_stopping"
+            break
 
-        else:
-            raise ValueError(
-                "Unknown stopping criterion: "
-                + stopping_criterion
-            )
-
-    return {
+    history = {
         "train_acc_history": train_acc_history,
         "val_acc_history": val_acc_history,
+        "mistakes_history": mistakes_history,
+
+        "training_accuracy": train_acc_history,
+        "validation_accuracy": val_acc_history,
+        "mistakes": mistakes_history,
+
         "epochs_run": len(train_acc_history),
         "stopped_reason": stopped_reason
     }
 
+    return history
 
-def evaluate_model(model, X, y, class_names=None):
+
+def evaluate_model(model, X, y, class_names=None, n_classes=10):
     """
-    Evaluate a trained MultiClassPerceptron on a dataset.
+    Evaluate a trained multiclass perceptron.
     """
 
-    predictions = model.predict_batch(X)
+    predictions = model.predict(X)
 
-    accuracy = accuracy_score(y, predictions)
+    accuracy = accuracy_score(
+        y,
+        predictions
+    )
 
     precision = precision_score(
         y,
         predictions,
+        labels=list(range(n_classes)),
         average=None,
         zero_division=0
     )
@@ -118,6 +124,7 @@ def evaluate_model(model, X, y, class_names=None):
     recall = recall_score(
         y,
         predictions,
+        labels=list(range(n_classes)),
         average=None,
         zero_division=0
     )
@@ -125,50 +132,83 @@ def evaluate_model(model, X, y, class_names=None):
     f1 = f1_score(
         y,
         predictions,
+        labels=list(range(n_classes)),
         average=None,
         zero_division=0
     )
 
-    cm = confusion_matrix(y, predictions)
+    cm = confusion_matrix(
+        y,
+        predictions,
+        labels=list(range(n_classes))
+    )
 
     return {
         "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "confusion_matrix": cm,
+
+        # Names expected by the test/evaluation scripts
         "precision_per_class": precision,
         "recall_per_class": recall,
-        "f1_per_class": f1,
-        "confusion_matrix": cm
+        "f1_per_class": f1
     }
 
 
-def grid_search(X_train, y_train, X_val, y_val,
-                learning_rates, normalisation_methods,
-                n_features, n_classes=10, **train_kwargs):
+def grid_search(
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    n_features,
+    n_classes=10,
+    learning_rates=None,
+    normalisation_methods=None,
+    max_epochs=10,
+    stopping_criterion="fixed",
+    patience=3,
+    random_state=42
+):
     """
-    Try every combination of learning_rate x normalisation_method,
-    train a model for each, and record validation accuracy.
+    Grid search over learning rate and normalisation.
     """
+
+    if learning_rates is None:
+        learning_rates = [0.01, 0.1, 1.0]
+
+    if normalisation_methods is None:
+        normalisation_methods = [
+            "none",
+            "minmax",
+            "zscore"
+        ]
 
     from perceptron import MultiClassPerceptron
     from data_utils import normalise
 
     results = []
 
-    for normalisation_method in normalisation_methods:
+    for method in normalisation_methods:
 
-        # Normalise training data
         X_train_norm, stats = normalise(
             X_train,
-            method=normalisation_method
+            method=method
         )
 
-        # Normalise validation data using the same training statistics
         X_val_norm, _ = normalise(
             X_val,
-            method=normalisation_method,
+            method=method,
             stats=stats
         )
 
         for learning_rate in learning_rates:
+
+            print(
+                f"Learning rate: {learning_rate} | "
+                f"Normalisation: {method}"
+            )
 
             model = MultiClassPerceptron(
                 n_features=n_features,
@@ -182,17 +222,29 @@ def grid_search(X_train, y_train, X_val, y_val,
                 y_train,
                 X_val_norm,
                 y_val,
-                **train_kwargs
+                max_epochs=max_epochs,
+                stopping_criterion=stopping_criterion,
+                patience=patience,
+                random_state=random_state
             )
 
-            val_accuracy = history["val_acc_history"][-1]
+            evaluation = evaluate_model(
+                model,
+                X_val_norm,
+                y_val,
+                n_classes=n_classes
+            )
 
             results.append({
                 "learning_rate": learning_rate,
-                "normalisation_method": normalisation_method,
-                "val_accuracy": val_accuracy,
-                "train_acc_history": history["train_acc_history"],
-                "val_acc_history": history["val_acc_history"]
+                "normalisation_method": method,
+                "val_accuracy": evaluation["accuracy"],
+                "validation_accuracy": evaluation["accuracy"],
+                "history": history,
+                "model": model,
+                "stats": stats
             })
 
     return results
+
+
