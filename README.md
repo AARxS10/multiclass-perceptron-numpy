@@ -31,13 +31,13 @@ perceptrons).
    Data is not included in this submission, per the assignment
    instructions.
 
-3. Open `RHMABD006_formatted.ipynb` in Jupyter and run all cells from
+3. Open `RHMABD006.ipynb` in Jupyter and run all cells from
    top to bottom (Kernel → Restart & Run All is recommended to confirm
    a clean run).
 
 ## Files
 
-- **`RHMABD006_formatted.ipynb`** — main notebook. Runs and documents
+- **`RHMABD006.ipynb`** — main notebook. Runs and documents
   all tasks (1–7): data loading and splitting, perceptron
   demonstration and sanity checks, training with two stopping
   criteria, hyperparameter grid search, final evaluation on validation
